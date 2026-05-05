@@ -1,0 +1,19 @@
+agents:
+  trae_agent:
+    tools:
+      - bash
+      - str_replace_based_edit_tool
+      - sequentialthinking
+      - task_done
+      - mcp_tool
+
+mcp_servers:
+  playwright:
+    command: npx
+    args:
+      - "-y"
+      - "@playwright/mcp@latest"
+      - "--browser=chrome"
+
+allow_mcp_servers:
+  - playwright
