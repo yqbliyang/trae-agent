@@ -23,6 +23,11 @@ pytest               # 单元测试
 uvicorn orch_backend.api.main:app --reload --port 8787
 ```
 
+**与本仓库同根的 `trae-agent` CLI**：orch 的 `TraeAgentAdapter` 会按顺序查找可执行文件：`ORCH_TRAE_CLI` 环境变量 → `PATH` 中的 `trae-cli` → **沿源码目录向上**查找 `trae-agent/` 根目录下的 `.venv/bin/trae-cli`（适合你从 monorepo 根目录装好 Trae Agent 后直接起后端）。任选其一：
+
+- 在仓库根：`uv sync`，保证存在 ` trae-agent/.venv/bin/trae-cli`。
+- 或导出：`export ORCH_TRAE_CLI=/绝对路径/to/trae-cli`。
+
 ### 前端
 
 ```bash

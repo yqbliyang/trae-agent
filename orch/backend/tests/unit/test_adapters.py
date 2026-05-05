@@ -72,3 +72,11 @@ def test_registry_reject_double_register():
 def test_mock_adapter_satisfies_protocol():
     a = MockAdapter()
     assert isinstance(a, CodingAgentAdapter)
+
+
+@pytest.mark.asyncio
+async def test_mock_adapter_fallback_reply_used_when_no_script():
+    a = MockAdapter(fallback_reply="FALL")
+    h = await a.start_session("req_decomposer", "sys", "/tmp")
+    r = await a.send(h, "x")
+    assert r.text == "FALL"

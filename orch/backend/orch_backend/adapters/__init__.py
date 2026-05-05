@@ -15,6 +15,7 @@ from orch_backend.adapters.trae import (
     TraeAgentAdapter,
     _ensure_playwright_profile,
     is_profile_bootstrap_needed,
+    resolve_trae_cli_executable,
 )
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "StreamCallback",
     "StreamEvent",
     "TraeAgentAdapter",
+    "resolve_trae_cli_executable",
     "_ensure_playwright_profile",
     "is_profile_bootstrap_needed",
 ]

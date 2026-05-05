@@ -63,6 +63,8 @@ from orch_backend.models import (
 from orch_backend.repo import RepoManager, TaskRegistry
 from orch_backend.store import NodeGraphStore
 
+from orch_backend.api.converse_runner import ConverseRunner
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,7 +112,8 @@ class AppContext:
         *,
         db_path: Optional[Path] = None,
         workspace_base: Optional[Path] = None,
-        trae_binary: str = "trae-cli",
+        trae_binary: Optional[str] = None,
+        enable_trae_adapter: bool = True,
     ) -> None:
         self.db_path = db_path or Path(os.environ.get("ORCH_DB", "./.orch.db"))
         self.workspace_base = workspace_base or Path(
@@ -120,14 +123,23 @@ class AppContext:
         self.event_bus = EventBus()
         self.converse_queue = ConverseQueue()
         self.adapter_registry = AdapterRegistry()
-        self.adapter_registry.register("mock", MockAdapter(scripted_outputs=[]))
-        # best-effort register real trae adapter; swallow FileNotFoundError so tests pass
-        try:
-            self.adapter_registry.register(
-                "trae", TraeAgentAdapter(trae_binary=trae_binary)
-            )
-        except Exception:  # pragma: no cover
-            pass
+        self.adapter_registry.register(
+            "mock",
+            MockAdapter(
+                scripted_outputs=[],
+                fallback_reply="[mock-orchestrator] 已处理对话；配置 trae adapter 可接真实 LLM。",
+            ),
+        )
+        _mock_fallback = self.adapter_registry.get("mock")
+        if enable_trae_adapter:
+            try:
+                self.adapter_registry.register(
+                    "trae", TraeAgentAdapter(trae_binary=trae_binary)
+                )
+            except Exception:  # pragma: no cover
+                self.adapter_registry.register("trae", _mock_fallback)
+        else:
+            self.adapter_registry.register("trae", _mock_fallback)
         self.role_registry = RoleRegistry(self.adapter_registry)
         self.repo_manager = RepoManager(self.workspace_base)
         self.task_registry = TaskRegistry(self.store, self.repo_manager)
@@ -143,6 +155,15 @@ class AppContext:
             self.composer,
             self.patch_executor,
             self.req_watcher,
+        )
+        self.converse_runner = ConverseRunner(
+            store=self.store,
+            queue=self.converse_queue,
+            role_registry=self.role_registry,
+            composer=self.composer,
+            patches=self.patch_executor,
+            req_watcher=self.req_watcher,
+            event_bus=self.event_bus,
         )
         self.profile_dir = _ensure_playwright_profile()
 
@@ -292,7 +313,12 @@ def build_app(context: AppContext) -> FastAPI:
                 payload=user_turn.model_dump(mode="json"),
             )
         )
-        return {"id": mid, "queue_depth": depth}
+        agent_turn = await context.converse_runner.process_one(task_id, req.role)
+        return {
+            "id": mid,
+            "queue_depth": depth,
+            "agent_turn_id": agent_turn.id if agent_turn else None,
+        }
 
     @app.get("/tasks/{task_id}/conversations")
     def list_conversations(task_id: str, role: Optional[str] = None) -> list[dict]:

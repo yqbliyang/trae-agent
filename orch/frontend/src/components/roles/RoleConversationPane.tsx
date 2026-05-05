@@ -5,9 +5,11 @@ import { apiClient } from "../../api/client";
 export function RoleConversationPane({
   taskId,
   roleKey,
+  onAfterSend,
 }: {
   taskId: string;
   roleKey: RoleTab;
+  onAfterSend?: () => void;
 }) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -22,8 +24,12 @@ export function RoleConversationPane({
         message: text.trim(),
         referenced_node_ids: [],
       });
-      setStatus(`排队深度: ${r.queue_depth}`);
+      setStatus(
+        `排队深度: ${r.queue_depth}` +
+          (r.agent_turn_id ? ` · agent turn: ${r.agent_turn_id}` : ""),
+      );
       setText("");
+      onAfterSend?.();
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "失败");
     }

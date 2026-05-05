@@ -37,6 +37,18 @@ export const apiClient = {
     return j(`${BASE}/tasks/${id}`);
   },
 
+  /** GET /tasks/{id}/turns — optional filters match backend query params */
+  async listTurns(
+    taskId: string,
+    filters?: { role?: string; phase?: string },
+  ): Promise<unknown[]> {
+    const q = new URLSearchParams();
+    if (filters?.role) q.set("role", filters.role);
+    if (filters?.phase) q.set("phase", filters.phase);
+    const suffix = q.toString() ? `?${q}` : "";
+    return j(`${BASE}/tasks/${taskId}/turns${suffix}`);
+  },
+
   async postConversation(
     taskId: string,
     body: {
@@ -44,7 +56,7 @@ export const apiClient = {
       message: string;
       referenced_node_ids: string[];
     },
-  ): Promise<{ id: string; queue_depth: number }> {
+  ): Promise<{ id: string; queue_depth: number; agent_turn_id?: string | null }> {
     return j(`${BASE}/tasks/${taskId}/conversations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

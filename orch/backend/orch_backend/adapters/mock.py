@@ -27,9 +27,12 @@ class MockAdapter(CodingAgentAdapter):
         self,
         scripted_outputs: Optional[list[str]] = None,
         callback: Optional[Callable[[SessionHandle, str], str]] = None,
+        *,
+        fallback_reply: Optional[str] = None,
     ) -> None:
         self._scripted: list[str] = list(scripted_outputs or [])
         self._callback = callback
+        self._fallback_reply = fallback_reply
         self.sent: list[tuple[str, str, dict[str, str]]] = []  # (role, msg, env)
         self.sessions: dict[str, SessionHandle] = {}
 
@@ -69,6 +72,8 @@ class MockAdapter(CodingAgentAdapter):
             text = self._callback(session, user_message)
         elif self._scripted:
             text = self._scripted.pop(0)
+        elif self._fallback_reply is not None:
+            text = self._fallback_reply
         else:
             raise AdapterError("MockAdapter: no scripted reply available")
 

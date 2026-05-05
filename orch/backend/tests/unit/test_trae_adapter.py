@@ -11,6 +11,7 @@ from orch_backend.adapters.trae import (
     TraeAgentAdapter,
     ensure_playwright_profile,
     materialize_trae_config_with_profile,
+    resolve_trae_cli_executable,
     shipped_default_trae_config,
 )
 
@@ -56,6 +57,24 @@ def test_materialize_injects_user_data_dir(tmp_path: Path):
     args = out["mcp_servers"]["playwright"]["args"]
     idx = args.index("--user-data-dir")
     assert args[idx + 1] == str(prof)
+
+
+def test_resolve_trae_cli_explicit_path_wins_over_env(tmp_path: Path, monkeypatch):
+    a = tmp_path / "a_trae_cli"
+    b = tmp_path / "b_trae_cli"
+    for p in (a, b):
+        p.write_text("#!/bin/sh\necho\n", encoding="utf-8")
+        p.chmod(0o755)
+    monkeypatch.setenv("ORCH_TRAE_CLI", str(b.resolve()))
+    assert resolve_trae_cli_executable(str(a)) == str(a.resolve())
+
+
+def test_resolve_trae_cli_reads_orch_trae_cli_env(tmp_path: Path, monkeypatch):
+    exe = tmp_path / "dummy-trae"
+    exe.write_text("#!/bin/sh\necho\n", encoding="utf-8")
+    exe.chmod(0o755)
+    monkeypatch.setenv("ORCH_TRAE_CLI", str(exe))
+    assert resolve_trae_cli_executable(None) == str(exe.resolve())
 
 
 @pytest.mark.asyncio

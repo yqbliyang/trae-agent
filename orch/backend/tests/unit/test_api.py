@@ -17,7 +17,8 @@ def client(tmp_path, monkeypatch):
     ctx = AppContext(
         db_path=tmp_path / "t.db",
         workspace_base=tmp_path / "workspaces",
-        trae_binary="/bin/true",  # adapter register may succeed
+        trae_binary="/bin/true",
+        enable_trae_adapter=False,
     )
     app = build_app(ctx)
     with TestClient(app) as c:
@@ -118,8 +119,15 @@ def test_post_conversation_persists_user_turn(client):
         json={"role": "arch_designer", "message": "hello @node", "referenced_node_ids": []},
     )
     assert r2.status_code == 200
+    body = r2.json()
+    assert "agent_turn_id" in body and body["agent_turn_id"]
     turns = client.get(f"/tasks/{tid}/turns").json()
     assert any(t["role"] == "human" and t["output_text"] == "hello @node" for t in turns)
+    assert any(
+        t["role"] == "arch_designer"
+        and "[mock-orchestrator]" in t.get("output_text", "")
+        for t in turns
+    )
 
 
 def test_post_conversation_bad_node_ref_400(client):

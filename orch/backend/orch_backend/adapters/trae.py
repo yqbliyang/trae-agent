@@ -25,6 +25,69 @@ from orch_backend.models import AdapterCapabilities
 log = logging.getLogger("orch_backend.trae_adapter")
 
 
+def _is_executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def resolve_trae_cli_executable(preference: str | None = None) -> str:
+    """Locate ``trae-cli`` for ``subprocess`` (PATH, env, monorepo .venv).
+
+    Resolution order:
+
+    #. Non-empty ``preference`` (caller): expanduser path if file, else ``shutil.which``.
+    #. ``ORCH_TRAE_CLI`` environment variable (same rules).
+    #. ``shutil.which("trae-cli")`` / ``trae_cli``.
+    #. Walk parents of this module for ``<root>/.venv/bin/trae-cli``
+       (``.venv\\Scripts\\trae-cli.exe`` on Windows).
+    #. Fallback string ``trae-cli`` (may ``ENOENT`` when executed).
+    """
+
+    def from_candidate(raw: str) -> str | None:
+        s = raw.strip()
+        if not s:
+            return None
+        p = Path(s).expanduser()
+        if _is_executable_file(p):
+            return str(p.resolve())
+        w = shutil.which(s)
+        if w:
+            return w
+        return None
+
+    if preference:
+        got = from_candidate(preference)
+        if got:
+            return got
+
+    env_got = from_candidate(os.environ.get("ORCH_TRAE_CLI", ""))
+    if env_got:
+        return env_got
+
+    for name in ("trae-cli", "trae_cli"):
+        w = shutil.which(name)
+        if w:
+            return w
+
+    here = Path(__file__).resolve()
+    candidates = (
+        Path(".venv") / "bin" / "trae-cli",
+        Path(".venv") / "Scripts" / "trae-cli.exe",
+    )
+    for parent in [here.parent, *here.parents]:
+        for rel in candidates:
+            cand = (parent / rel).resolve()
+            if _is_executable_file(cand):
+                log.debug("resolved trae-cli from venv probe: %s", cand)
+                return str(cand)
+
+    log.debug(
+        "trae-cli fallback to literal 'trae-cli' (preference=%r, ORCH_TRAE_CLI=%r)",
+        preference,
+        os.environ.get("ORCH_TRAE_CLI", ""),
+    )
+    return "trae-cli"
+
+
 def shipped_default_trae_config() -> Path:
     """Resolved path of `config/trae_default.yaml` next to backend root."""
     return Path(__file__).resolve().parents[2] / "config" / "trae_default.yaml"
@@ -95,12 +158,8 @@ class TraeAgentAdapter(CodingAgentAdapter):
         timeout_sec: float = 3600,
     ) -> None:
         self._timeout = timeout_sec
-        self._binary = (
-            trae_binary
-            or shutil.which("trae-cli")
-            or shutil.which("trae_cli")
-            or "trae-cli"
-        )
+        self._binary = resolve_trae_cli_executable(trae_binary)
+        log.info("TraeAgentAdapter trae-cli path: %s", self._binary)
         self._default_config = Path(
             default_config_path or shipped_default_trae_config()
         )
@@ -177,13 +236,19 @@ class TraeAgentAdapter(CodingAgentAdapter):
 
         merged_env = {**os.environ, **session.env}
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=str(workspace),
-            env=merged_env,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(workspace),
+                env=merged_env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError as e:
+            raise AdapterError(
+                f"无法执行 trae-cli（已解析路径 {self._binary!r}）。请在 trae-agent 仓库根目录执行 "
+                "`uv sync`（得到 .venv/bin/trae-cli），或将 ORCH_TRAE_CLI 设为可执行文件的绝对路径。"
+            ) from e
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout=self._timeout)
         except asyncio.TimeoutError as e:
